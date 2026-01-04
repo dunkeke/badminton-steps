@@ -1,14 +1,8 @@
 import { V0 } from "./v0-footwork-data.js";
 
-/**
- * Minimal V0 prototype:
- * - click landing cell -> generate plan -> draw path preview
- * - play/pause/replay animation along timeline
- * - speed/reaction sliders feed into V0.plan()
- */
-
 const $ = (id) => document.getElementById(id);
 
+// --- Elements ---
 const landingGridEl = $("landingGrid");
 const canvas = $("arena");
 const ctx = canvas.getContext("2d");
@@ -20,8 +14,11 @@ const hudTime = $("hudTime");
 
 const speedEl = $("speed");
 const reactionEl = $("reaction");
+const holdEl = $("hold");
+
 const speedVal = $("speedVal");
 const reactionVal = $("reactionVal");
+const holdVal = $("holdVal");
 
 const btnPlay = $("btnPlay");
 const btnPause = $("btnPause");
@@ -31,34 +28,45 @@ const btnCopyPlan = $("btnCopyPlan");
 const criteriaBox = $("criteriaBox");
 const planBox = $("planBox");
 
-// ---- UI State ----
+// V0.6 new controls
+const modeSingleBtn = $("modeSingle");
+const modeSeqBtn = $("modeSeq");
+const seqPanel = $("seqPanel");
+
+const btnRandomOne = $("btnRandomOne");
+const seqLenEl = $("seqLen");
+const seqLenVal = $("seqLenVal");
+const autoAdvanceEl = $("autoAdvance");
+const btnGenSeq = $("btnGenSeq");
+const btnClearSeq = $("btnClearSeq");
+const btnNextInSeq = $("btnNextInSeq");
+const queueBox = $("queueBox");
+
+// --- State ---
 let selectedLandingId = "F_C";
 let plan = null;
 
-// playback state
 let playing = false;
 let startTs = 0;
-let pauseAccum = 0; // ms accumulated paused time
+let pauseAccum = 0;
 let pausedAt = 0;
-
-// current segment index for HUD/cues
 let currentSegIdx = 0;
 
-// ---- Build landing grid buttons ----
+let trainingMode = "single"; // "single" | "sequence"
+let queue = [];
+let queueIdx = 0;
+
+// --- Build landing buttons ---
 function buildLandingButtons() {
-  // Order: Front row, Mid row, Rear row (like our LandingGrid)
   const order = ["F_L","F_C","F_R","M_L","M_C","M_R","R_L","R_C","R_R"];
   landingGridEl.innerHTML = "";
-
   for (const id of order) {
     const cell = V0.LandingGrid.getCell(id);
     const btn = document.createElement("button");
     btn.className = "btn";
     btn.dataset.landingId = id;
     btn.innerHTML = `${cell.label}`;
-    btn.addEventListener("click", () => {
-      selectLanding(id);
-    });
+    btn.addEventListener("click", () => selectLanding(id));
     landingGridEl.appendChild(btn);
   }
 }
@@ -69,18 +77,27 @@ function setActiveButton(id) {
   });
 }
 
-function selectLanding(id) {
+function selectLanding(id, { keepQueueIndex = true } = {}) {
   selectedLandingId = id;
   setActiveButton(id);
-  regeneratePlan();    // update preview immediately
-  stopPlayback();      // stay ready
-  render();            // draw preview
+  regeneratePlan();
+  stopPlayback();
+  render();
+
+  // If user clicks landing while in sequence mode, we treat it as preview.
+  // Keep queueIdx unchanged by default.
+  if (!keepQueueIndex && trainingMode === "sequence") {
+    queueIdx = 0;
+    syncQueueUI();
+  }
 }
 
-// ---- Sliders ----
+// --- Sliders ---
 function updateSliderLabels() {
   speedVal.textContent = `${Number(speedEl.value).toFixed(2)}×`;
   reactionVal.textContent = `${Number(reactionEl.value)}ms`;
+  if (holdVal) holdVal.textContent = `${Number(holdEl.value)}ms`;
+  if (seqLenVal && seqLenEl) seqLenVal.textContent = `${Number(seqLenEl.value)}`;
 }
 
 speedEl.addEventListener("input", () => {
@@ -93,8 +110,83 @@ reactionEl.addEventListener("input", () => {
   regeneratePlan();
   render();
 });
+holdEl?.addEventListener("input", () => {
+  updateSliderLabels();
+  regeneratePlan();
+  render();
+});
+seqLenEl?.addEventListener("input", () => {
+  updateSliderLabels();
+});
 
-// ---- Plan generation ----
+// --- Mode switching ---
+function setMode(mode) {
+  trainingMode = mode;
+  if (mode === "single") {
+    modeSingleBtn.classList.add("primary");
+    modeSeqBtn.classList.remove("primary");
+    seqPanel.style.display = "none";
+  } else {
+    modeSeqBtn.classList.add("primary");
+    modeSingleBtn.classList.remove("primary");
+    seqPanel.style.display = "block";
+  }
+}
+
+modeSingleBtn?.addEventListener("click", () => setMode("single"));
+modeSeqBtn?.addEventListener("click", () => setMode("sequence"));
+
+// --- Random / Queue ---
+const LANDING_IDS = ["F_L","F_C","F_R","M_L","M_C","M_R","R_L","R_C","R_R"];
+
+function randomLandingId() {
+  return LANDING_IDS[Math.floor(Math.random() * LANDING_IDS.length)];
+}
+
+btnRandomOne?.addEventListener("click", () => {
+  const id = randomLandingId();
+  setMode("single");
+  selectLanding(id);
+  startPlayback();
+});
+
+btnGenSeq?.addEventListener("click", () => {
+  setMode("sequence");
+  const n = Number(seqLenEl.value);
+  queue = Array.from({ length: n }, () => randomLandingId());
+  queueIdx = 0;
+  syncQueueUI();
+  if (queue.length) {
+    selectLanding(queue[0]);
+    startPlayback();
+  }
+});
+
+btnClearSeq?.addEventListener("click", () => {
+  queue = [];
+  queueIdx = 0;
+  syncQueueUI();
+});
+
+btnNextInSeq?.addEventListener("click", () => {
+  if (!queue.length) return;
+  queueIdx = Math.min(queueIdx + 1, queue.length - 1);
+  syncQueueUI();
+  selectLanding(queue[queueIdx]);
+  replayPlayback();
+});
+
+function syncQueueUI() {
+  if (!queueBox) return;
+  const renderQueue = queue.map((id, i) => {
+    const cell = V0.LandingGrid.getCell(id);
+    const mark = (i === queueIdx && trainingMode === "sequence") ? "👉 " : "   ";
+    return `${mark}${i+1}. ${id} (${cell?.label ?? ""})`;
+  }).join("\n");
+  queueBox.textContent = queue.length ? renderQueue : "[]";
+}
+
+// --- Plan generation ---
 function regeneratePlan() {
   const cell = V0.LandingGrid.getCell(selectedLandingId);
   const tempo = {
@@ -103,21 +195,18 @@ function regeneratePlan() {
   };
   plan = V0.plan({ landingId: selectedLandingId, tempo });
 
-  // HUD
   hudLanding.textContent = `落点：${cell?.label ?? selectedLandingId}`;
   hudSeq.textContent = `组合：${plan.meta.sequenceId}`;
 
-  // show plan json in debug box (short)
   planBox.textContent = JSON.stringify(plan, null, 2);
 
-  // show cues of first segment by default
   currentSegIdx = 0;
   updateCriteriaBox(0);
   hudSeg.textContent = `动作段：—`;
   hudTime.textContent = `进度：0%`;
 }
 
-// ---- Canvas resize (hiDPI) ----
+// --- Canvas resize ---
 function resizeCanvasToDisplaySize() {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -127,7 +216,7 @@ function resizeCanvasToDisplaySize() {
     canvas.width = w;
     canvas.height = h;
   }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 window.addEventListener("resize", () => {
@@ -135,19 +224,17 @@ window.addEventListener("resize", () => {
   render();
 });
 
-// ---- Drawing helpers ----
+// --- Drawing helpers ---
 function drawCourt() {
   const W = canvas.getBoundingClientRect().width;
   const H = canvas.getBoundingClientRect().height;
 
-  // Map normalized coord to canvas pixels (with padding)
   const pad = 24;
   const left = pad;
   const top = pad;
   const right = W - pad;
   const bottom = H - pad;
 
-  // Court boundaries (singles)
   const b = V0.CourtSpec.boundaries.singles;
   const xL = lerp(left, right, b.left);
   const xR = lerp(left, right, b.right);
@@ -155,17 +242,16 @@ function drawCourt() {
   const yB = lerp(top, bottom, b.bottom);
   const netY = lerp(top, bottom, V0.CourtSpec.netY);
 
-  // background subtle grid
   ctx.save();
   ctx.clearRect(0, 0, W, H);
 
-  // Outer court
+  // outer court
   ctx.strokeStyle = "rgba(232,236,255,.25)";
   ctx.lineWidth = 2;
   roundRect(ctx, xL, yT, xR - xL, yB - yT, 12);
   ctx.stroke();
 
-  // Net
+  // net
   ctx.strokeStyle = "rgba(232,236,255,.20)";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -173,7 +259,16 @@ function drawCourt() {
   ctx.lineTo(xR, netY);
   ctx.stroke();
 
-  // Center line (visual aid)
+  // short service line (visual cue)
+  const shortY = lerp(top, bottom, V0.CourtSpec.lines.shortServiceY);
+  ctx.strokeStyle = "rgba(232,236,255,.10)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(xL, shortY);
+  ctx.lineTo(xR, shortY);
+  ctx.stroke();
+
+  // center guide
   ctx.strokeStyle = "rgba(232,236,255,.08)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -183,27 +278,39 @@ function drawCourt() {
 
   ctx.restore();
 
-  return { pad, left, top, right, bottom, xL, xR, yT, yB };
+  return { left, top, right, bottom, xL, xR, yT, yB };
 }
 
 function toPx(pos, frame) {
   const { left, top, right, bottom } = frame;
-  return {
-    x: lerp(left, right, pos.x),
-    y: lerp(top, bottom, pos.y),
-  };
+  return { x: lerp(left, right, pos.x), y: lerp(top, bottom, pos.y) };
 }
 
 function drawLandingMarkers(frame) {
-  // Draw small dots for all cells; highlight selected
+  // draw as soft tiles for clarity
   for (const cell of V0.LandingGrid.cells) {
-    const p = toPx(cell.center, frame);
     const isSel = cell.id === selectedLandingId;
+    const c = toPx(cell.center, frame);
 
+    // tile size heuristic
+    const tileW = (frame.right - frame.left) * 0.18;
+    const tileH = (frame.bottom - frame.top) * 0.14;
+
+    ctx.save();
+    ctx.fillStyle = isSel ? "rgba(125,180,255,.12)" : "rgba(232,236,255,.04)";
+    ctx.strokeStyle = isSel ? "rgba(125,180,255,.30)" : "rgba(232,236,255,.10)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, c.x - tileW/2, c.y - tileH/2, tileW, tileH, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // dot
     ctx.beginPath();
     ctx.fillStyle = isSel ? "rgba(125,180,255,.90)" : "rgba(232,236,255,.22)";
-    ctx.arc(p.x, p.y, isSel ? 6 : 4, 0, Math.PI * 2);
+    ctx.arc(c.x, c.y, isSel ? 6 : 4, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.restore();
   }
 }
 
@@ -211,49 +318,82 @@ function drawBase(frame) {
   const base = V0.BaseSpec.singles.neutral;
   const p = toPx({ x: base.x, y: base.y }, frame);
 
+  // recover zone ring
+  ctx.save();
+  ctx.strokeStyle = "rgba(232,236,255,.10)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 26, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // base point
   ctx.beginPath();
   ctx.fillStyle = "rgba(255,255,255,.75)";
   ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
   ctx.fill();
 
-  // ring
   ctx.strokeStyle = "rgba(255,255,255,.25)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
   ctx.stroke();
+
+  ctx.restore();
+}
+
+// Segment style by intent (no hard colors, just opacity/width)
+function segStyle(intent) {
+  if (intent === "start")   return { a: 0.18, w: 3 };
+  if (intent === "travel")  return { a: 0.28, w: 4 };
+  if (intent === "contact") return { a: 0.55, w: 5 };
+  if (intent === "recover") return { a: 0.22, w: 4 };
+  return { a: 0.25, w: 4 };
+}
+
+function footHintForMove(moveId) {
+  // heuristic v0.6 (right-handed)
+  if (moveId === "LUNGE_BH") return "L";
+  if (moveId === "LUNGE_FH") return "R";
+  if (moveId === "SCISSOR") return "R"; // dominant landing cue (simplified)
+  return "";
 }
 
 function drawPath(frame) {
   if (!plan) return;
-  // Build polyline points from segments
-  const pts = [];
-  for (const seg of plan.segments) {
-    pts.push(toPx(seg.from, frame));
-  }
-  // add last
-  const last = plan.segments[plan.segments.length - 1];
-  pts.push(toPx(last.to, frame));
 
   ctx.save();
-  ctx.strokeStyle = "rgba(125,180,255,.45)";
-  ctx.lineWidth = 4;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.stroke();
-
-  // Contact points highlight (end of contact segments)
+  // draw per segment
   for (const seg of plan.segments) {
+    const p1 = toPx(seg.from, frame);
+    const p2 = toPx(seg.to, frame);
+    const st = segStyle(seg.intent);
+
+    ctx.strokeStyle = `rgba(125,180,255,${st.a})`;
+    ctx.lineWidth = st.w;
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    // contact marker + foot hint
     if (seg.intent === "contact") {
-      const p = toPx(seg.to, frame);
       ctx.beginPath();
       ctx.fillStyle = "rgba(255,230,160,.85)";
-      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      ctx.arc(p2.x, p2.y, 7, 0, Math.PI * 2);
       ctx.fill();
+
+      const foot = footHintForMove(seg.moveId);
+      if (foot) {
+        ctx.font = "12px ui-sans-serif, system-ui";
+        ctx.fillStyle = "rgba(255,255,255,.85)";
+        ctx.fillText(foot, p2.x + 10, p2.y - 8);
+        ctx.fillStyle = "rgba(232,236,255,.55)";
+        ctx.fillText("foot", p2.x + 22, p2.y - 8);
+      }
     }
   }
 
@@ -270,30 +410,46 @@ function drawPlayerAt(frame, pos, isGhost = false) {
   ctx.restore();
 }
 
-// ---- Playback timeline math ----
+// --- Playback timeline ---
 function getTotalDurationMs() {
   if (!plan) return 0;
-  // include reaction delay as initial wait
   const reaction = Number(reactionEl.value) || 0;
-  const sum = plan.segments.reduce((acc, s) => acc + s.durationMs, 0);
+  const hold = Number(holdEl?.value ?? 0) || 0;
+
+  // add hold time after each contact segment (v0.6)
+  const sum = plan.segments.reduce((acc, s) => {
+    const extra = (s.intent === "contact") ? hold : 0;
+    return acc + s.durationMs + extra;
+  }, 0);
   return reaction + sum;
 }
 
 function samplePositionAt(tMs) {
-  // tMs includes reaction delay window
   const reaction = Number(reactionEl.value) || 0;
-  if (!plan || plan.segments.length === 0) return { pos: V0.BaseSpec.singles.neutral, segIdx: 0, progress: 0 };
+  const hold = Number(holdEl?.value ?? 0) || 0;
 
+  if (!plan || plan.segments.length === 0) {
+    return { pos: V0.BaseSpec.singles.neutral, segIdx: 0, progress: 0 };
+  }
   if (tMs <= reaction) {
     return { pos: V0.BaseSpec.singles.neutral, segIdx: 0, progress: 0 };
   }
 
   let time = tMs - reaction;
   let acc = 0;
+
   for (let i = 0; i < plan.segments.length; i++) {
     const seg = plan.segments[i];
-    const nextAcc = acc + seg.durationMs;
+    const extra = (seg.intent === "contact") ? hold : 0;
+    const segSpan = seg.durationMs + extra;
+    const nextAcc = acc + segSpan;
+
     if (time <= nextAcc) {
+      // if in hold window (after movement finished)
+      if (seg.intent === "contact" && time > acc + seg.durationMs) {
+        return { pos: seg.to, segIdx: i, progress: 1 };
+      }
+
       const local = (time - acc) / seg.durationMs;
       const pos = {
         x: lerp(seg.from.x, seg.to.x, easeInOut(local)),
@@ -303,7 +459,7 @@ function samplePositionAt(tMs) {
     }
     acc = nextAcc;
   }
-  // end
+
   const last = plan.segments[plan.segments.length - 1];
   return { pos: last.to, segIdx: plan.segments.length - 1, progress: 1 };
 }
@@ -322,19 +478,13 @@ function updateCriteriaBox(segIdx) {
   criteriaBox.textContent = lines.join("\n");
 }
 
-// ---- Controls ----
+// --- Controls ---
 btnPlay.addEventListener("click", () => {
   if (!plan) regeneratePlan();
   startPlayback();
 });
-
-btnPause.addEventListener("click", () => {
-  pausePlayback();
-});
-
-btnReplay.addEventListener("click", () => {
-  replayPlayback();
-});
+btnPause.addEventListener("click", () => pausePlayback());
+btnReplay.addEventListener("click", () => replayPlayback());
 
 btnCopyPlan.addEventListener("click", async () => {
   try {
@@ -353,6 +503,8 @@ window.addEventListener("keydown", (e) => {
     playing ? pausePlayback() : startPlayback();
   } else if (e.key.toLowerCase() === "r") {
     replayPlayback();
+  } else if (e.key.toLowerCase() === "n") {
+    if (trainingMode === "sequence") btnNextInSeq?.click();
   }
 });
 
@@ -361,11 +513,9 @@ function startPlayback() {
   if (!playing) {
     playing = true;
     if (pausedAt) {
-      // resume
       pauseAccum += performance.now() - pausedAt;
       pausedAt = 0;
     } else {
-      // first start
       startTs = performance.now();
       pauseAccum = 0;
       currentSegIdx = 0;
@@ -393,11 +543,11 @@ function stopPlayback() {
 function replayPlayback() {
   if (!plan) return;
   stopPlayback();
-  render();        // draw preview at start position
+  render();
   startPlayback();
 }
 
-// ---- Main render/tick ----
+// --- Render loop ---
 function render(tMs = 0) {
   resizeCanvasToDisplaySize();
 
@@ -406,10 +556,8 @@ function render(tMs = 0) {
   drawBase(frame);
   drawPath(frame);
 
-  // ghost at base for reference
   drawPlayerAt(frame, V0.BaseSpec.singles.neutral, true);
 
-  // player position (preview: base; playing: sampled)
   const total = getTotalDurationMs();
   const ratio = total > 0 ? (tMs / total) : 0;
 
@@ -417,7 +565,6 @@ function render(tMs = 0) {
     const sample = samplePositionAt(tMs);
     drawPlayerAt(frame, sample.pos, false);
 
-    // HUD segment & cues switch
     if (sample.segIdx !== currentSegIdx) {
       currentSegIdx = sample.segIdx;
       updateCriteriaBox(currentSegIdx);
@@ -425,7 +572,6 @@ function render(tMs = 0) {
     hudSeg.textContent = `动作段：${plan.segments[currentSegIdx]?.name ?? "—"}`;
     hudTime.textContent = `进度：${Math.round(Math.min(1, ratio) * 100)}%`;
   } else {
-    // idle preview
     drawPlayerAt(frame, V0.BaseSpec.singles.neutral, false);
     hudSeg.textContent = `动作段：—`;
     hudTime.textContent = `进度：0%`;
@@ -436,12 +582,23 @@ function tick() {
   if (!playing) return;
 
   const now = performance.now();
-  const t = now - startTs - pauseAccum; // ms since start excluding pauses
+  const t = now - startTs - pauseAccum;
   const total = getTotalDurationMs();
 
   if (t >= total) {
     render(total);
     playing = false;
+
+    // auto-advance if sequence mode
+    if (trainingMode === "sequence" && autoAdvanceEl?.checked && queue.length) {
+      const next = queueIdx + 1;
+      if (next < queue.length) {
+        queueIdx = next;
+        syncQueueUI();
+        selectLanding(queue[queueIdx]);
+        replayPlayback();
+      }
+    }
     return;
   }
 
@@ -449,10 +606,9 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-// ---- Utils ----
+// --- Utils ---
 function lerp(a, b, t) { return a + (b - a) * t; }
 function easeInOut(t) {
-  // smoothstep-ish
   t = Math.max(0, Math.min(1, t));
   return t * t * (3 - 2 * t);
 }
@@ -467,9 +623,11 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// ---- Boot ----
+// --- Boot ---
 buildLandingButtons();
 updateSliderLabels();
 setActiveButton(selectedLandingId);
+setMode("single");
+syncQueueUI();
 regeneratePlan();
 render();
