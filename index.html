@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Badminton Footwork Trainer · V0</title>
+  <title>Badminton Footwork Trainer · V0.6</title>
   <style>
     :root { --bg:#0b1020; --panel:#121a33; --text:#e8ecff; --muted:#9aa4c7; --line:#2a355d; }
     * { box-sizing: border-box; }
@@ -52,6 +52,7 @@
 
 <body>
   <div class="app">
+
     <!-- Left: Task -->
     <div class="panel">
       <h2>落点选择（3×3）</h2>
@@ -59,9 +60,48 @@
 
       <div class="sep"></div>
 
+      <h2>训练模式（V0.6）</h2>
+      <div class="row" style="margin:8px 0;">
+        <label>模式</label>
+        <div style="display:flex; gap:8px; width:100%;">
+          <button class="pill primary" id="modeSingle">单点</button>
+          <button class="pill" id="modeSeq">序列</button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="pill" id="btnRandomOne">随机一次</button>
+      </div>
+
+      <div id="seqPanel" style="display:none;">
+        <div class="row">
+          <label for="seqLen">序列长度</label>
+          <input id="seqLen" type="range" min="3" max="12" step="1" value="6" />
+          <div style="width:48px; text-align:right;" id="seqLenVal">6</div>
+        </div>
+
+        <div class="row" style="margin-top:6px;">
+          <label>自动连播</label>
+          <input id="autoAdvance" type="checkbox" checked />
+        </div>
+
+        <div class="controls">
+          <button class="pill" id="btnGenSeq">生成序列</button>
+          <button class="pill" id="btnClearSeq">清空</button>
+          <button class="pill" id="btnNextInSeq">下一条</button>
+        </div>
+
+        <div class="sep"></div>
+        <h2>序列队列</h2>
+        <pre id="queueBox">[]</pre>
+      </div>
+
+      <div class="sep"></div>
+
       <div class="small">
-        V0：单打 / 右手固定。<br/>
-        点击落点可预览步伐轨迹，按播放开始动画。
+        V0.6：单打 / 右手固定。<br/>
+        轨迹分段：Split / Travel / Contact / Recover。<br/>
+        Contact 点叠加简化脚步提示（L/R）。
       </div>
     </div>
 
@@ -100,6 +140,12 @@
         <div style="width:48px; text-align:right;" id="reactionVal">180ms</div>
       </div>
 
+      <div class="row">
+        <label for="hold">触球停留 hold</label>
+        <input id="hold" type="range" min="0" max="300" step="10" value="80" />
+        <div style="width:48px; text-align:right;" id="holdVal">80ms</div>
+      </div>
+
       <div class="sep"></div>
 
       <h2>当前动作要点（criteria）</h2>
@@ -110,6 +156,7 @@
       <h2>调试输出</h2>
       <pre id="planBox">{}</pre>
     </div>
+
   </div>
 
   <script type="module" src="./app.js"></script>
