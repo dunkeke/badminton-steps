@@ -358,6 +358,13 @@ function footHintForMove(moveId) {
   return "";
 }
 
+function stanceForSegment(seg) {
+  if (!seg) return "split";
+  if (seg.moveId === "SCISSOR") return "scissor";
+  if (seg.moveId?.startsWith("LUNGE")) return "lunge";
+  return "split";
+}
+
 function drawPath(frame) {
   if (!plan) return;
 
@@ -435,15 +442,30 @@ function drawHeadingArrow(p, heading, opts = {}) {
   ctx.restore();
 }
 
-function drawFootprint(x, y, heading, color, alpha = 1) {
+function drawFootprint(x, y, heading, color, alpha = 1, label = "") {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(heading);
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(8,12,24,.6)";
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.ellipse(0, 0, 6, 10, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255,255,255,.6)";
+  ctx.arc(0, -6, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (label) {
+    ctx.font = "11px ui-sans-serif, system-ui";
+    ctx.fillStyle = "rgba(232,236,255,.9)";
+    ctx.textAlign = "center";
+    ctx.fillText(label, 0, 16);
+  }
   ctx.restore();
 }
 
@@ -451,32 +473,52 @@ function drawFootprintsAt(frame, pos, heading, opts = {}) {
   const {
     ghost = false,
     highlightFoot = "",
+    stance = "split",
   } = opts;
   const p = toPx(pos, frame);
-  const spread = 9;
+  const spread = stance === "split" ? 11 : 10;
   const perp = heading - Math.PI / 2;
   const offsetX = Math.cos(perp) * spread;
   const offsetY = Math.sin(perp) * spread;
+  const forward = Math.cos(heading);
+  const forwardY = Math.sin(heading);
+  const lungeOffset = stance === "lunge" ? 12 : 0;
+  const scissorOffset = stance === "scissor" ? 8 : 0;
 
   const baseColor = ghost ? "rgba(232,236,255,.35)" : "rgba(232,236,255,.85)";
   const highlightColor = "rgba(255,230,160,.95)";
 
-  const left = { x: p.x + offsetX, y: p.y + offsetY };
-  const right = { x: p.x - offsetX, y: p.y - offsetY };
+  const leadFoot = highlightFoot === "L" ? "L" : highlightFoot === "R" ? "R" : "";
+  const leadAdvance = lungeOffset || scissorOffset;
+  const trailRetreat = lungeOffset || scissorOffset;
+
+  const leftAdvance = leadFoot === "L" ? leadAdvance : -trailRetreat;
+  const rightAdvance = leadFoot === "R" ? leadAdvance : -trailRetreat;
+
+  const left = {
+    x: p.x + offsetX + forward * leftAdvance,
+    y: p.y + offsetY + forwardY * leftAdvance,
+  };
+  const right = {
+    x: p.x - offsetX + forward * rightAdvance,
+    y: p.y - offsetY + forwardY * rightAdvance,
+  };
 
   drawFootprint(
     left.x,
     left.y,
     heading,
     highlightFoot === "L" ? highlightColor : baseColor,
-    ghost ? 0.4 : 1
+    ghost ? 0.4 : 1,
+    ghost ? "" : "L"
   );
   drawFootprint(
     right.x,
     right.y,
     heading,
     highlightFoot === "R" ? highlightColor : baseColor,
-    ghost ? 0.4 : 1
+    ghost ? 0.4 : 1,
+    ghost ? "" : "R"
   );
 
   if (!ghost) {
@@ -640,7 +682,8 @@ function render(tMs = 0) {
     const seg = plan.segments[sample.segIdx];
     const heading = headingFromSegment(seg);
     const highlightFoot = seg?.intent === "contact" ? footHintForMove(seg.moveId) : "";
-    drawFootprintsAt(frame, sample.pos, heading, { highlightFoot });
+    const stance = stanceForSegment(seg);
+    drawFootprintsAt(frame, sample.pos, heading, { highlightFoot, stance });
 
     if (sample.segIdx !== currentSegIdx) {
       currentSegIdx = sample.segIdx;
