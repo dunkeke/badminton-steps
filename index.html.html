@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Badminton Footwork Trainer · V0</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#121a33; --text:#e8ecff; --muted:#9aa4c7; --line:#2a355d; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+    .app { display:grid; grid-template-columns: 280px 1fr 320px; gap:12px; padding:12px; height:100vh; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; overflow:auto; }
+    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.3px; color:var(--muted); font-weight:600; }
+    .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+    .btn {
+      padding:10px 8px; border-radius:10px; border:1px solid var(--line);
+      background:rgba(255,255,255,.04); color:var(--text); cursor:pointer;
+      font-size:13px; line-height:1.1;
+    }
+    .btn:hover { background:rgba(255,255,255,.08); }
+    .btn.active { outline:2px solid rgba(125, 180, 255, .7); background:rgba(125,180,255,.14); }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; }
+    .row label { font-size:12px; color:var(--muted); width:110px; }
+    input[type="range"] { width:100%; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .pill {
+      padding:9px 10px; border-radius:999px; border:1px solid var(--line);
+      background:rgba(255,255,255,.04); cursor:pointer; font-size:13px;
+    }
+    .pill:hover { background:rgba(255,255,255,.08); }
+    .pill.primary { background:rgba(125,180,255,.14); border-color:rgba(125,180,255,.4); }
+    .canvasWrap { display:flex; flex-direction:column; gap:10px; }
+    .hud {
+      display:flex; gap:12px; flex-wrap:wrap; align-items:center;
+      font-size:12px; color:var(--muted);
+    }
+    .tag { padding:4px 8px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.03); }
+    canvas { width:100%; height:calc(100vh - 170px); border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.02); }
+    pre {
+      margin:0; white-space:pre-wrap; word-break:break-word;
+      padding:10px; border-radius:12px; border:1px solid var(--line);
+      background:rgba(0,0,0,.15); color:var(--text); font-size:12px;
+    }
+    .small { font-size:12px; color:var(--muted); }
+    .sep { height:1px; background:var(--line); margin:10px 0; }
+    @media (max-width: 1050px) {
+      .app { grid-template-columns: 1fr; height:auto; }
+      canvas { height:60vh; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <!-- Left: Task -->
+    <div class="panel">
+      <h2>落点选择（3×3）</h2>
+      <div class="grid" id="landingGrid"></div>
+
+      <div class="sep"></div>
+
+      <div class="small">
+        V0：单打 / 右手固定。<br/>
+        点击落点可预览步伐轨迹，按播放开始动画。
+      </div>
+    </div>
+
+    <!-- Middle: Arena -->
+    <div class="panel canvasWrap">
+      <div class="hud">
+        <span class="tag" id="hudLanding">落点：—</span>
+        <span class="tag" id="hudSeq">组合：—</span>
+        <span class="tag" id="hudSeg">动作段：—</span>
+        <span class="tag" id="hudTime">进度：0%</span>
+      </div>
+
+      <canvas id="arena"></canvas>
+
+      <div class="controls">
+        <button class="pill primary" id="btnPlay">播放</button>
+        <button class="pill" id="btnPause">暂停</button>
+        <button class="pill" id="btnReplay">重播</button>
+        <button class="pill" id="btnCopyPlan">复制 Plan JSON</button>
+      </div>
+    </div>
+
+    <!-- Right: Coach Panel -->
+    <div class="panel">
+      <h2>节奏参数（Coach）</h2>
+
+      <div class="row">
+        <label for="speed">速度 speed</label>
+        <input id="speed" type="range" min="0.5" max="2.0" step="0.05" value="1.0" />
+        <div style="width:48px; text-align:right;" id="speedVal">1.00×</div>
+      </div>
+
+      <div class="row">
+        <label for="reaction">反应 reaction</label>
+        <input id="reaction" type="range" min="0" max="500" step="10" value="180" />
+        <div style="width:48px; text-align:right;" id="reactionVal">180ms</div>
+      </div>
+
+      <div class="sep"></div>
+
+      <h2>当前动作要点（criteria）</h2>
+      <pre id="criteriaBox">请选择落点…</pre>
+
+      <div class="sep"></div>
+
+      <h2>调试输出</h2>
+      <pre id="planBox">{}</pre>
+    </div>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
