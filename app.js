@@ -358,6 +358,13 @@ function footHintForMove(moveId) {
   return "";
 }
 
+function stanceForSegment(seg) {
+  if (!seg) return "split";
+  if (seg.moveId === "SCISSOR") return "scissor";
+  if (seg.moveId?.startsWith("LUNGE")) return "lunge";
+  return "split";
+}
+
 function drawPath(frame) {
   if (!plan) return;
 
@@ -400,14 +407,123 @@ function drawPath(frame) {
   ctx.restore();
 }
 
-function drawPlayerAt(frame, pos, isGhost = false) {
-  const p = toPx(pos, frame);
+function headingFromSegment(seg) {
+  if (!seg) return -Math.PI / 2;
+  const dx = seg.to.x - seg.from.x;
+  const dy = seg.to.y - seg.from.y;
+  if (Math.hypot(dx, dy) < 0.001) {
+    return -Math.PI / 2;
+  }
+  return Math.atan2(dy, dx);
+}
+
+function drawHeadingArrow(p, heading, opts = {}) {
+  const { color = "rgba(125,180,255,.85)", length = 22 } = opts;
+  const tipX = p.x + Math.cos(heading) * length;
+  const tipY = p.y + Math.sin(heading) * length;
+  const left = heading + Math.PI * 0.75;
+  const right = heading - Math.PI * 0.75;
+
   ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.fillStyle = isGhost ? "rgba(232,236,255,.20)" : "rgba(232,236,255,.85)";
-  ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX + Math.cos(left) * 8, tipY + Math.sin(left) * 8);
+  ctx.lineTo(tipX + Math.cos(right) * 8, tipY + Math.sin(right) * 8);
+  ctx.closePath();
   ctx.fill();
   ctx.restore();
+}
+
+function drawFootprint(x, y, heading, color, alpha = 1, label = "") {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(8,12,24,.6)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 6, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255,255,255,.6)";
+  ctx.arc(0, -6, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (label) {
+    ctx.font = "11px ui-sans-serif, system-ui";
+    ctx.fillStyle = "rgba(232,236,255,.9)";
+    ctx.textAlign = "center";
+    ctx.fillText(label, 0, 16);
+  }
+  ctx.restore();
+}
+
+function drawFootprintsAt(frame, pos, heading, opts = {}) {
+  const {
+    ghost = false,
+    highlightFoot = "",
+    stance = "split",
+  } = opts;
+  const p = toPx(pos, frame);
+  const spread = stance === "split" ? 11 : 10;
+  const perp = heading - Math.PI / 2;
+  const offsetX = Math.cos(perp) * spread;
+  const offsetY = Math.sin(perp) * spread;
+  const forward = Math.cos(heading);
+  const forwardY = Math.sin(heading);
+  const lungeOffset = stance === "lunge" ? 12 : 0;
+  const scissorOffset = stance === "scissor" ? 8 : 0;
+
+  const baseColor = ghost ? "rgba(232,236,255,.35)" : "rgba(232,236,255,.85)";
+  const highlightColor = "rgba(255,230,160,.95)";
+
+  const leadFoot = highlightFoot === "L" ? "L" : highlightFoot === "R" ? "R" : "";
+  const leadAdvance = lungeOffset || scissorOffset;
+  const trailRetreat = lungeOffset || scissorOffset;
+
+  const leftAdvance = leadFoot === "L" ? leadAdvance : -trailRetreat;
+  const rightAdvance = leadFoot === "R" ? leadAdvance : -trailRetreat;
+
+  const left = {
+    x: p.x + offsetX + forward * leftAdvance,
+    y: p.y + offsetY + forwardY * leftAdvance,
+  };
+  const right = {
+    x: p.x - offsetX + forward * rightAdvance,
+    y: p.y - offsetY + forwardY * rightAdvance,
+  };
+
+  drawFootprint(
+    left.x,
+    left.y,
+    heading,
+    highlightFoot === "L" ? highlightColor : baseColor,
+    ghost ? 0.4 : 1,
+    ghost ? "" : "L"
+  );
+  drawFootprint(
+    right.x,
+    right.y,
+    heading,
+    highlightFoot === "R" ? highlightColor : baseColor,
+    ghost ? 0.4 : 1,
+    ghost ? "" : "R"
+  );
+
+  if (!ghost) {
+    drawHeadingArrow(p, heading, { color: "rgba(125,180,255,.75)" });
+  }
 }
 
 // --- Playback timeline ---
@@ -556,14 +672,18 @@ function render(tMs = 0) {
   drawBase(frame);
   drawPath(frame);
 
-  drawPlayerAt(frame, V0.BaseSpec.singles.neutral, true);
+  drawFootprintsAt(frame, V0.BaseSpec.singles.neutral, -Math.PI / 2, { ghost: true });
 
   const total = getTotalDurationMs();
   const ratio = total > 0 ? (tMs / total) : 0;
 
   if (plan && total > 0 && tMs > 0) {
     const sample = samplePositionAt(tMs);
-    drawPlayerAt(frame, sample.pos, false);
+    const seg = plan.segments[sample.segIdx];
+    const heading = headingFromSegment(seg);
+    const highlightFoot = seg?.intent === "contact" ? footHintForMove(seg.moveId) : "";
+    const stance = stanceForSegment(seg);
+    drawFootprintsAt(frame, sample.pos, heading, { highlightFoot, stance });
 
     if (sample.segIdx !== currentSegIdx) {
       currentSegIdx = sample.segIdx;
@@ -572,7 +692,7 @@ function render(tMs = 0) {
     hudSeg.textContent = `动作段：${plan.segments[currentSegIdx]?.name ?? "—"}`;
     hudTime.textContent = `进度：${Math.round(Math.min(1, ratio) * 100)}%`;
   } else {
-    drawPlayerAt(frame, V0.BaseSpec.singles.neutral, false);
+    drawFootprintsAt(frame, V0.BaseSpec.singles.neutral, -Math.PI / 2);
     hudSeg.textContent = `动作段：—`;
     hudTime.textContent = `进度：0%`;
   }
