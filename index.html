@@ -5,41 +5,67 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Badminton Footwork Trainer · V0.6</title>
   <style>
-    :root { --bg:#0b1020; --panel:#121a33; --text:#e8ecff; --muted:#9aa4c7; --line:#2a355d; }
+    :root {
+      --bg:#f4f7fb;
+      --panel:#ffffff;
+      --text:#1a2540;
+      --muted:#5f6f92;
+      --line:#c8d4ea;
+      --accent:#2b6cb0;
+      --accent-soft:rgba(43,108,176,.12);
+      --grid:rgba(43,108,176,.08);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+    body {
+      margin:0;
+      font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color:var(--text);
+      background-color:var(--bg);
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
     .app { display:grid; grid-template-columns: 280px 1fr 320px; gap:12px; padding:12px; height:100vh; }
-    .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; overflow:auto; }
-    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.3px; color:var(--muted); font-weight:600; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; overflow:auto; box-shadow:0 10px 30px rgba(25,42,70,.06); }
+    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.3px; color:var(--muted); font-weight:700; }
     .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
     .btn {
       padding:10px 8px; border-radius:10px; border:1px solid var(--line);
-      background:rgba(255,255,255,.04); color:var(--text); cursor:pointer;
+      background:linear-gradient(180deg, rgba(43,108,176,.08), rgba(43,108,176,.02));
+      color:var(--text); cursor:pointer;
       font-size:13px; line-height:1.1;
+      transition:transform .15s ease, box-shadow .15s ease;
     }
-    .btn:hover { background:rgba(255,255,255,.08); }
-    .btn.active { outline:2px solid rgba(125, 180, 255, .7); background:rgba(125,180,255,.14); }
+    .btn:hover { background:rgba(43,108,176,.14); transform:translateY(-1px); box-shadow:0 6px 14px rgba(43,108,176,.12); }
+    .btn.active { outline:2px solid rgba(43,108,176,.4); background:rgba(43,108,176,.18); }
     .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; }
     .row label { font-size:12px; color:var(--muted); width:110px; }
     input[type="range"] { width:100%; }
     .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
     .pill {
       padding:9px 10px; border-radius:999px; border:1px solid var(--line);
-      background:rgba(255,255,255,.04); cursor:pointer; font-size:13px;
+      background:rgba(43,108,176,.08); cursor:pointer; font-size:13px;
     }
-    .pill:hover { background:rgba(255,255,255,.08); }
-    .pill.primary { background:rgba(125,180,255,.14); border-color:rgba(125,180,255,.4); }
+    .pill:hover { background:rgba(43,108,176,.12); }
+    .pill.primary { background:var(--accent-soft); border-color:rgba(43,108,176,.4); color:var(--accent); font-weight:600; }
     .canvasWrap { display:flex; flex-direction:column; gap:10px; }
     .hud {
       display:flex; gap:12px; flex-wrap:wrap; align-items:center;
       font-size:12px; color:var(--muted);
     }
-    .tag { padding:4px 8px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.03); }
-    canvas { width:100%; height:calc(100vh - 170px); border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,.02); }
+    .tag { padding:4px 8px; border:1px solid var(--line); border-radius:999px; background:rgba(43,108,176,.06); }
+    canvas {
+      width:100%;
+      height:calc(100vh - 170px);
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:#fdfdff;
+    }
     pre {
       margin:0; white-space:pre-wrap; word-break:break-word;
       padding:10px; border-radius:12px; border:1px solid var(--line);
-      background:rgba(0,0,0,.15); color:var(--text); font-size:12px;
+      background:rgba(43,108,176,.04); color:var(--text); font-size:12px;
     }
     .small { font-size:12px; color:var(--muted); }
     .sep { height:1px; background:var(--line); margin:10px 0; }
@@ -156,9 +182,11 @@
       <h2>轨迹步伐图例</h2>
       <div class="small" id="legendBox">
         <div>➤ 蓝色箭头：身体朝向</div>
-        <div>● 黄脚：触球主脚（L/R）</div>
+        <div>线条深浅：Split / Travel / Contact / Recover</div>
+        <div>虚线：移动中段（Travel/Recover）</div>
+        <div>● 橙色触点：击球落脚主脚（L/R）</div>
         <div>● 白脚：另一侧支撑脚</div>
-        <div>• 小白点：脚尖方向</div>
+        <div>• 小圆点：脚尖方向</div>
         <div>Split：双脚对称</div>
         <div>Lunge：前后站姿</div>
         <div>Scissor：剪刀步前后交换</div>

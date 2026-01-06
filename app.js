@@ -225,6 +225,35 @@ window.addEventListener("resize", () => {
 });
 
 // --- Drawing helpers ---
+const PALETTE = {
+  ink: "rgba(24,41,72,.9)",
+  grid: "rgba(43,108,176,.08)",
+  line: "rgba(43,108,176,.25)",
+  lineStrong: "rgba(43,108,176,.55)",
+  accent: "rgba(43,108,176,.85)",
+  contact: "rgba(230,122,63,.85)",
+};
+
+function drawBlueprintGrid(width, height) {
+  const step = 28;
+  ctx.save();
+  ctx.strokeStyle = PALETTE.grid;
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= width; x += step) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= height; y += step) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawCourt() {
   const W = canvas.getBoundingClientRect().width;
   const H = canvas.getBoundingClientRect().height;
@@ -245,14 +274,16 @@ function drawCourt() {
   ctx.save();
   ctx.clearRect(0, 0, W, H);
 
+  drawBlueprintGrid(W, H);
+
   // outer court
-  ctx.strokeStyle = "rgba(232,236,255,.25)";
+  ctx.strokeStyle = PALETTE.lineStrong;
   ctx.lineWidth = 2;
   roundRect(ctx, xL, yT, xR - xL, yB - yT, 12);
   ctx.stroke();
 
   // net
-  ctx.strokeStyle = "rgba(232,236,255,.20)";
+  ctx.strokeStyle = PALETTE.line;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(xL, netY);
@@ -261,7 +292,7 @@ function drawCourt() {
 
   // short service line (visual cue)
   const shortY = lerp(top, bottom, V0.CourtSpec.lines.shortServiceY);
-  ctx.strokeStyle = "rgba(232,236,255,.10)";
+  ctx.strokeStyle = PALETTE.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(xL, shortY);
@@ -269,7 +300,7 @@ function drawCourt() {
   ctx.stroke();
 
   // center guide
-  ctx.strokeStyle = "rgba(232,236,255,.08)";
+  ctx.strokeStyle = PALETTE.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo((xL + xR) / 2, yT);
@@ -297,8 +328,8 @@ function drawLandingMarkers(frame) {
     const tileH = (frame.bottom - frame.top) * 0.14;
 
     ctx.save();
-    ctx.fillStyle = isSel ? "rgba(125,180,255,.12)" : "rgba(232,236,255,.04)";
-    ctx.strokeStyle = isSel ? "rgba(125,180,255,.30)" : "rgba(232,236,255,.10)";
+    ctx.fillStyle = isSel ? "rgba(43,108,176,.16)" : "rgba(43,108,176,.06)";
+    ctx.strokeStyle = isSel ? "rgba(43,108,176,.45)" : "rgba(43,108,176,.18)";
     ctx.lineWidth = 1;
     roundRect(ctx, c.x - tileW/2, c.y - tileH/2, tileW, tileH, 10);
     ctx.fill();
@@ -306,7 +337,7 @@ function drawLandingMarkers(frame) {
 
     // dot
     ctx.beginPath();
-    ctx.fillStyle = isSel ? "rgba(125,180,255,.90)" : "rgba(232,236,255,.22)";
+    ctx.fillStyle = isSel ? "rgba(43,108,176,.95)" : "rgba(43,108,176,.25)";
     ctx.arc(c.x, c.y, isSel ? 6 : 4, 0, Math.PI * 2);
     ctx.fill();
 
@@ -320,7 +351,7 @@ function drawBase(frame) {
 
   // recover zone ring
   ctx.save();
-  ctx.strokeStyle = "rgba(232,236,255,.10)";
+  ctx.strokeStyle = PALETTE.grid;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(p.x, p.y, 26, 0, Math.PI * 2);
@@ -328,11 +359,11 @@ function drawBase(frame) {
 
   // base point
   ctx.beginPath();
-  ctx.fillStyle = "rgba(255,255,255,.75)";
+  ctx.fillStyle = "rgba(43,108,176,.75)";
   ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(255,255,255,.25)";
+  ctx.strokeStyle = "rgba(43,108,176,.35)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
@@ -343,11 +374,11 @@ function drawBase(frame) {
 
 // Segment style by intent (no hard colors, just opacity/width)
 function segStyle(intent) {
-  if (intent === "start")   return { a: 0.18, w: 3 };
-  if (intent === "travel")  return { a: 0.28, w: 4 };
-  if (intent === "contact") return { a: 0.55, w: 5 };
-  if (intent === "recover") return { a: 0.22, w: 4 };
-  return { a: 0.25, w: 4 };
+  if (intent === "start")   return { color: PALETTE.line, w: 3, dash: [3, 6] };
+  if (intent === "travel")  return { color: PALETTE.accent, w: 4, dash: [10, 6] };
+  if (intent === "contact") return { color: PALETTE.contact, w: 5, dash: [] };
+  if (intent === "recover") return { color: PALETTE.lineStrong, w: 4, dash: [8, 6] };
+  return { color: PALETTE.line, w: 4, dash: [6, 6] };
 }
 
 function footHintForMove(moveId) {
@@ -378,32 +409,66 @@ function drawPath(frame) {
     const p2 = toPx(seg.to, frame);
     const st = segStyle(seg.intent);
 
-    ctx.strokeStyle = `rgba(125,180,255,${st.a})`;
+    ctx.strokeStyle = st.color;
     ctx.lineWidth = st.w;
+    ctx.setLineDash(st.dash || []);
 
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
 
+    drawSegmentArrow(p1, p2, st.color);
+    drawSegmentLabel(seg, p1, p2);
+
     // contact marker + foot hint
     if (seg.intent === "contact") {
       ctx.beginPath();
-      ctx.fillStyle = "rgba(255,230,160,.85)";
+      ctx.fillStyle = "rgba(230,122,63,.9)";
       ctx.arc(p2.x, p2.y, 7, 0, Math.PI * 2);
       ctx.fill();
 
       const foot = footHintForMove(seg.moveId);
       if (foot) {
         ctx.font = "12px ui-sans-serif, system-ui";
-        ctx.fillStyle = "rgba(255,255,255,.85)";
+        ctx.fillStyle = "rgba(24,41,72,.9)";
         ctx.fillText(foot, p2.x + 10, p2.y - 8);
-        ctx.fillStyle = "rgba(232,236,255,.55)";
+        ctx.fillStyle = "rgba(24,41,72,.55)";
         ctx.fillText("foot", p2.x + 22, p2.y - 8);
       }
     }
   }
 
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawSegmentArrow(from, to, color) {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const length = 10;
+  const tip = { x: to.x, y: to.y };
+  const left = angle + Math.PI * 0.8;
+  const right = angle - Math.PI * 0.8;
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(tip.x + Math.cos(left) * length, tip.y + Math.sin(left) * length);
+  ctx.lineTo(tip.x + Math.cos(right) * length, tip.y + Math.sin(right) * length);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSegmentLabel(seg, p1, p2) {
+  const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  const label = seg.intent.toUpperCase();
+  ctx.save();
+  ctx.font = "11px ui-sans-serif, system-ui";
+  ctx.fillStyle = "rgba(24,41,72,.7)";
+  ctx.textAlign = "center";
+  ctx.fillText(label, mid.x, mid.y - 10);
   ctx.restore();
 }
 
@@ -418,7 +483,7 @@ function headingFromSegment(seg) {
 }
 
 function drawHeadingArrow(p, heading, opts = {}) {
-  const { color = "rgba(125,180,255,.85)", length = 22 } = opts;
+  const { color = "rgba(43,108,176,.75)", length = 22 } = opts;
   const tipX = p.x + Math.cos(heading) * length;
   const tipY = p.y + Math.sin(heading) * length;
   const left = heading + Math.PI * 0.75;
@@ -448,7 +513,7 @@ function drawFootprint(x, y, heading, color, alpha = 1, label = "") {
   ctx.rotate(heading);
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(8,12,24,.6)";
+  ctx.strokeStyle = "rgba(24,41,72,.6)";
   ctx.lineWidth = 1.2;
   ctx.beginPath();
   ctx.ellipse(0, 0, 6, 10, 0, 0, Math.PI * 2);
@@ -456,13 +521,13 @@ function drawFootprint(x, y, heading, color, alpha = 1, label = "") {
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.fillStyle = "rgba(255,255,255,.6)";
+  ctx.fillStyle = "rgba(24,41,72,.35)";
   ctx.arc(0, -6, 2.2, 0, Math.PI * 2);
   ctx.fill();
 
   if (label) {
     ctx.font = "11px ui-sans-serif, system-ui";
-    ctx.fillStyle = "rgba(232,236,255,.9)";
+    ctx.fillStyle = "rgba(24,41,72,.8)";
     ctx.textAlign = "center";
     ctx.fillText(label, 0, 16);
   }
@@ -485,8 +550,8 @@ function drawFootprintsAt(frame, pos, heading, opts = {}) {
   const lungeOffset = stance === "lunge" ? 12 : 0;
   const scissorOffset = stance === "scissor" ? 8 : 0;
 
-  const baseColor = ghost ? "rgba(232,236,255,.35)" : "rgba(232,236,255,.85)";
-  const highlightColor = "rgba(255,230,160,.95)";
+  const baseColor = ghost ? "rgba(43,108,176,.25)" : "rgba(43,108,176,.8)";
+  const highlightColor = "rgba(230,122,63,.95)";
 
   const leadFoot = highlightFoot === "L" ? "L" : highlightFoot === "R" ? "R" : "";
   const leadAdvance = lungeOffset || scissorOffset;
@@ -522,91 +587,7 @@ function drawFootprintsAt(frame, pos, heading, opts = {}) {
   );
 
   if (!ghost) {
-    drawHeadingArrow(p, heading, { color: "rgba(125,180,255,.75)" });
-  }
-}
-
-function drawFootprint(x, y, heading, color, alpha = 1, label = "") {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(heading);
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(8,12,24,.6)";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 6, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.fillStyle = "rgba(255,255,255,.6)";
-  ctx.arc(0, -6, 2.2, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (label) {
-    ctx.font = "11px ui-sans-serif, system-ui";
-    ctx.fillStyle = "rgba(232,236,255,.9)";
-    ctx.textAlign = "center";
-    ctx.fillText(label, 0, 16);
-  }
-  ctx.restore();
-}
-
-function drawFootprintsAt(frame, pos, heading, opts = {}) {
-  const {
-    ghost = false,
-    highlightFoot = "",
-    stance = "split",
-  } = opts;
-  const p = toPx(pos, frame);
-  const spread = stance === "split" ? 11 : 10;
-  const perp = heading - Math.PI / 2;
-  const offsetX = Math.cos(perp) * spread;
-  const offsetY = Math.sin(perp) * spread;
-  const forward = Math.cos(heading);
-  const forwardY = Math.sin(heading);
-  const lungeOffset = stance === "lunge" ? 12 : 0;
-  const scissorOffset = stance === "scissor" ? 8 : 0;
-
-  const baseColor = ghost ? "rgba(232,236,255,.35)" : "rgba(232,236,255,.85)";
-  const highlightColor = "rgba(255,230,160,.95)";
-
-  const leadFoot = highlightFoot === "L" ? "L" : highlightFoot === "R" ? "R" : "";
-  const leadAdvance = lungeOffset || scissorOffset;
-  const trailRetreat = lungeOffset || scissorOffset;
-
-  const leftAdvance = leadFoot === "L" ? leadAdvance : -trailRetreat;
-  const rightAdvance = leadFoot === "R" ? leadAdvance : -trailRetreat;
-
-  const left = {
-    x: p.x + offsetX + forward * leftAdvance,
-    y: p.y + offsetY + forwardY * leftAdvance,
-  };
-  const right = {
-    x: p.x - offsetX + forward * rightAdvance,
-    y: p.y - offsetY + forwardY * rightAdvance,
-  };
-
-  drawFootprint(
-    left.x,
-    left.y,
-    heading,
-    highlightFoot === "L" ? highlightColor : baseColor,
-    ghost ? 0.4 : 1,
-    ghost ? "" : "L"
-  );
-  drawFootprint(
-    right.x,
-    right.y,
-    heading,
-    highlightFoot === "R" ? highlightColor : baseColor,
-    ghost ? 0.4 : 1,
-    ghost ? "" : "R"
-  );
-
-  if (!ghost) {
-    drawHeadingArrow(p, heading, { color: "rgba(125,180,255,.75)" });
+    drawHeadingArrow(p, heading, { color: "rgba(43,108,176,.75)" });
   }
 }
 
